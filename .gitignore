@@ -51,3 +51,7 @@ reports/
 
 # Docker
 docker-data/
+
+# Vim
+*.swp
+*.swo
