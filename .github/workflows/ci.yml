@@ -89,9 +89,7 @@ jobs:
 
       - name: Run SecurePipe policy engine
         run: |
-          python policy_engine.py \
-            --sarif security-results/trivy-fs-results.sarif \
-            --policy policies/container.json
+          python policy_engine.py --sarif security-results/trivy-fs-results.sarif --policy policies/container.json
 
   docker-build:
     name: Docker Build
@@ -109,6 +107,81 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build \
-            --tag securepipe:${{ github.sha }} \
-            .
+          docker build --tag securepipe:${{ github.sha }} .
+
+      - name: Save Docker image
+        run: |
+          docker save securepipe:${{ github.sha }} | gzip > securepipe-image.tar.gz
+
+      - name: Upload Docker image
+        uses: actions/upload-artifact@v4
+        with:
+          name: securepipe-docker-image
+          path: securepipe-image.tar.gz
+          retention-days: 1
+
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+
+    needs:
+      - docker-build
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: securepipe-docker-image
+          path: image
+
+      - name: Load Docker image
+        run: |
+          gunzip -c image/securepipe-image.tar.gz | docker load
+
+      - name: Run Trivy container vulnerability scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: "securepipe:${{ github.sha }}"
+          scanners: "vuln"
+          format: "sarif"
+          output: "trivy-container-results.sarif"
+          exit-code: "0"
+
+      - name: Upload container Trivy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-container-report
+          path: trivy-container-results.sarif
+          retention-days: 7
+
+  container-policy-gate:
+    name: Container Policy Gate
+    runs-on: ubuntu-latest
+
+    needs:
+      - container-scan
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Download container Trivy report
+        uses: actions/download-artifact@v4
+        with:
+          name: trivy-container-report
+          path: security-results
+
+      - name: Run SecurePipe container policy
+        run: |
+          python policy_engine.py --sarif security-results/trivy-container-results.sarif --policy policies/container.json
