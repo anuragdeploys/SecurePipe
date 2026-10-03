@@ -1,4 +1,4 @@
-fastapi[standard]
-sqlalchemy
-pytest
-httpx
+fastapi==0.142.2
+pydantic==2.13.5
+SQLAlchemy==2.0.54
+uvicorn==0.54.0
