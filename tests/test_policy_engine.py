@@ -453,5 +453,3 @@ def test_policy_passes_medium_finding_within_fixture_threshold():
 
     assert result["decision"] == "PASS"
     assert result["reason"] == "All vulnerability policy checks passed"
-
-:%s/[[:space:]]\+$//
