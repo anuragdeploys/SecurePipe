@@ -1,5 +1,7 @@
+import argparse
 import json
 import re
+import sys
 from pathlib import Path
 
 
@@ -167,7 +169,6 @@ def evaluate_vulnerabilities(findings, policy):
             "counts": counts,
         }
 
-
     # ---------------------------------------------------------
     # Medium threshold
     # ---------------------------------------------------------
@@ -232,3 +233,53 @@ def evaluate_vulnerabilities(findings, policy):
         "reason": "All vulnerability policy checks passed",
         "counts": counts,
     }
+
+
+def build_argument_parser():
+    parser = argparse.ArgumentParser(
+        description="Evaluate Trivy SARIF findings against a SecurePipe policy."
+    )
+
+    parser.add_argument(
+        "--sarif",
+        required=True,
+        help="Path to the Trivy SARIF report.",
+    )
+
+    parser.add_argument(
+        "--policy",
+        required=True,
+        help="Path to the JSON security policy.",
+    )
+
+    return parser
+
+
+def main():
+    parser = build_argument_parser()
+    args = parser.parse_args()
+
+    try:
+        findings = parse_sarif_findings(args.sarif)
+        policy = load_policy(args.policy)
+        result = evaluate_vulnerabilities(findings, policy)
+
+    except (FileNotFoundError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}")
+        return 2
+
+    print("SecurePipe Policy Gate")
+    print("======================")
+    print(f"Findings: {len(findings)}")
+    print(f"Decision: {result['decision']}")
+    print(f"Reason: {result['reason']}")
+    print(f"Counts: {result['counts']}")
+
+    if result["decision"] == "BLOCK":
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
