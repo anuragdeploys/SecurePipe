@@ -13,7 +13,6 @@ def parse_sarif_findings(sarif_path):
     The SARIF `level` field is NOT used as the vulnerability severity.
     Trivy reports the actual vulnerability severity inside message.text.
     """
-
     sarif_path = Path(sarif_path)
 
     with sarif_path.open("r", encoding="utf-8") as file:
@@ -41,10 +40,6 @@ def parse_sarif_findings(sarif_path):
 
 
 def _parse_trivy_message(rule_id, message):
-    """
-    Parse Trivy's human-readable SARIF message.
-    """
-
     package = _extract_field(message, "Package")
     installed_version = _extract_field(message, "Installed Version")
     severity = _extract_field(message, "Severity")
@@ -68,10 +63,6 @@ def _parse_trivy_message(rule_id, message):
 
 
 def _extract_field(message, field_name):
-    """
-    Extract a labelled value from Trivy's message text.
-    """
-
     pattern = rf"^{re.escape(field_name)}:\s*(.*)$"
 
     for line in message.splitlines():
@@ -81,6 +72,23 @@ def _extract_field(message, field_name):
             return match.group(1).strip()
 
     return ""
+
+
+def load_policy(policy_path):
+    """
+    Load a JSON security policy from disk.
+
+    Returns:
+        dict
+
+    Raises:
+        FileNotFoundError
+        json.JSONDecodeError
+    """
+    policy_path = Path(policy_path)
+
+    with policy_path.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
 
 def evaluate_vulnerabilities(findings, policy):
@@ -96,8 +104,18 @@ def evaluate_vulnerabilities(findings, policy):
             Human-readable explanation
 
         counts:
-            Number of findings by severity
+            Number of applicable findings by severity
     """
+
+    ignored_vulnerabilities = set(
+        policy.get("ignored_vulnerabilities", [])
+    )
+
+    applicable_findings = [
+        finding
+        for finding in findings
+        if finding.get("id") not in ignored_vulnerabilities
+    ]
 
     counts = {
         "CRITICAL": 0,
@@ -106,19 +124,20 @@ def evaluate_vulnerabilities(findings, policy):
         "LOW": 0,
     }
 
-    for finding in findings:
+    # Count findings BEFORE evaluating any thresholds.
+    for finding in applicable_findings:
         severity = finding.get("severity")
 
         if severity in counts:
             counts[severity] += 1
 
     # ---------------------------------------------------------
-    # Critical vulnerabilities
+    # Fixable CRITICAL vulnerabilities
     # ---------------------------------------------------------
 
     critical_fixable = [
         finding
-        for finding in findings
+        for finding in applicable_findings
         if finding.get("severity") == "CRITICAL"
         and finding.get("fix_available") is True
     ]
@@ -131,12 +150,12 @@ def evaluate_vulnerabilities(findings, policy):
         }
 
     # ---------------------------------------------------------
-    # High vulnerabilities
+    # Fixable HIGH vulnerabilities
     # ---------------------------------------------------------
 
     high_fixable = [
         finding
-        for finding in findings
+        for finding in applicable_findings
         if finding.get("severity") == "HIGH"
         and finding.get("fix_available") is True
     ]
@@ -147,6 +166,7 @@ def evaluate_vulnerabilities(findings, policy):
             "reason": "Fixable HIGH vulnerability found",
             "counts": counts,
         }
+
 
     # ---------------------------------------------------------
     # Medium threshold
@@ -183,19 +203,19 @@ def evaluate_vulnerabilities(findings, policy):
         }
 
     # ---------------------------------------------------------
-    # Unfixable critical/high findings are report-only
+    # Unfixable CRITICAL/HIGH vulnerabilities
     # ---------------------------------------------------------
 
     unfixable_critical = [
         finding
-        for finding in findings
+        for finding in applicable_findings
         if finding.get("severity") == "CRITICAL"
         and not finding.get("fix_available")
     ]
 
     unfixable_high = [
         finding
-        for finding in findings
+        for finding in applicable_findings
         if finding.get("severity") == "HIGH"
         and not finding.get("fix_available")
     ]

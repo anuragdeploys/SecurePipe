@@ -1,3 +1,4 @@
+from pathlib import Path
 import json
 
 from policy_engine import parse_sarif_findings, evaluate_vulnerabilities
@@ -318,3 +319,139 @@ def test_policy_blocks_low_findings_above_threshold():
     result = evaluate_vulnerabilities(findings, default_policy())
 
     assert result["decision"] == "BLOCK"
+
+def test_load_policy(tmp_path):
+    policy_file = tmp_path / "container.json"
+
+    policy_file.write_text(
+        json.dumps(
+            {
+                "max_critical": 0,
+                "max_high": 0,
+                "max_medium": 10,
+                "max_low": 50,
+                "block_on_critical": True,
+                "block_on_high": True,
+                "ignored_vulnerabilities": [],
+            }
+        )
+    )
+
+    from policy_engine import load_policy
+
+    policy = load_policy(policy_file)
+
+    assert policy["max_critical"] == 0
+    assert policy["max_high"] == 0
+    assert policy["max_medium"] == 10
+    assert policy["max_low"] == 50
+    assert policy["block_on_critical"] is True
+    assert policy["block_on_high"] is True
+    assert policy["ignored_vulnerabilities"] == []
+
+
+def test_load_policy_rejects_missing_file(tmp_path):
+    from policy_engine import load_policy
+
+    missing_file = tmp_path / "missing.json"
+
+    try:
+        load_policy(missing_file)
+    except FileNotFoundError:
+        pass
+    else:
+        raise AssertionError("Expected FileNotFoundError")
+
+def test_policy_ignores_configured_vulnerability():
+    findings = [
+        {
+            "id": "CVE-TEST-001",
+            "package": "test-package",
+            "installed_version": "1.0.0",
+            "severity": "HIGH",
+            "fixed_version": "1.1.0",
+            "fix_available": True,
+        }
+    ]
+
+    policy = default_policy()
+    policy["ignored_vulnerabilities"] = ["CVE-TEST-001"]
+
+    result = evaluate_vulnerabilities(findings, policy)
+
+    assert result["decision"] == "PASS"
+    assert result["counts"]["HIGH"] == 0
+
+
+def test_policy_does_not_ignore_unlisted_vulnerability():
+    findings = [
+        {
+            "id": "CVE-TEST-002",
+            "package": "test-package",
+            "installed_version": "1.0.0",
+            "severity": "HIGH",
+            "fixed_version": "1.1.0",
+            "fix_available": True,
+        }
+    ]
+
+    policy = default_policy()
+    policy["ignored_vulnerabilities"] = ["CVE-TEST-001"]
+
+    result = evaluate_vulnerabilities(findings, policy)
+
+    assert result["decision"] == "BLOCK"
+    assert result["counts"]["HIGH"] == 1
+
+def test_policy_blocks_fixable_critical_from_fixture():
+    fixture_path = Path("tests/fixtures/policy_findings.json")
+
+    with fixture_path.open("r", encoding="utf-8") as file:
+        findings = json.load(file)
+
+    policy = default_policy()
+
+    result = evaluate_vulnerabilities(findings, policy)
+
+    assert result["decision"] == "BLOCK"
+    assert result["reason"] == "Fixable CRITICAL vulnerability found"
+
+def test_policy_reports_unfixable_high_from_fixture():
+    fixture_path = Path("tests/fixtures/policy_findings.json")
+
+    with fixture_path.open("r", encoding="utf-8") as file:
+        findings = json.load(file)
+
+    findings = [
+        finding
+        for finding in findings
+        if finding["id"] == "CVE-TEST-HIGH-UNFIXED"
+    ]
+
+    policy = default_policy()
+
+    result = evaluate_vulnerabilities(findings, policy)
+
+    assert result["decision"] == "REPORT"
+    assert result["reason"] == "Unfixable CRITICAL/HIGH vulnerabilities found"
+
+def test_policy_passes_medium_finding_within_fixture_threshold():
+    fixture_path = Path("tests/fixtures/policy_findings.json")
+
+    with fixture_path.open("r", encoding="utf-8") as file:
+        findings = json.load(file)
+
+    findings = [
+        finding
+        for finding in findings
+        if finding["id"] == "CVE-TEST-MEDIUM"
+    ]
+
+    policy = default_policy()
+
+    result = evaluate_vulnerabilities(findings, policy)
+
+    assert result["decision"] == "PASS"
+    assert result["reason"] == "All vulnerability policy checks passed"
+
+:%s/[[:space:]]\+$//

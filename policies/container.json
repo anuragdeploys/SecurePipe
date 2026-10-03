@@ -1,0 +1,7 @@
+{
+  "max_medium": 10,
+  "max_low": 50,
+  "block_on_critical": true,
+  "block_on_high": true,
+  "ignored_vulnerabilities": []
+}

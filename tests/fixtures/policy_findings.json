@@ -1,0 +1,42 @@
+[
+  {
+    "id": "CVE-TEST-CRITICAL-FIXED",
+    "package": "demo-package",
+    "installed_version": "1.0.0",
+    "severity": "CRITICAL",
+    "fixed_version": "2.0.0",
+    "fix_available": true
+  },
+  {
+    "id": "CVE-TEST-HIGH-FIXED",
+    "package": "demo-package",
+    "installed_version": "1.0.0",
+    "severity": "HIGH",
+    "fixed_version": "2.0.0",
+    "fix_available": true
+  },
+  {
+    "id": "CVE-TEST-HIGH-UNFIXED",
+    "package": "old-package",
+    "installed_version": "1.0.0",
+    "severity": "HIGH",
+    "fixed_version": "",
+    "fix_available": false
+  },
+  {
+    "id": "CVE-TEST-MEDIUM",
+    "package": "medium-package",
+    "installed_version": "1.0.0",
+    "severity": "MEDIUM",
+    "fixed_version": "2.0.0",
+    "fix_available": true
+  },
+  {
+    "id": "CVE-TEST-LOW",
+    "package": "low-package",
+    "installed_version": "1.0.0",
+    "severity": "LOW",
+    "fixed_version": "2.0.0",
+    "fix_available": true
+  }
+]
