@@ -97,16 +97,30 @@ def evaluate_vulnerabilities(findings, policy):
     """
     Evaluate normalized vulnerability findings against security policy.
 
-    Returns a dictionary containing:
+    Policy semantics:
 
-        decision:
-            PASS, REPORT, or BLOCK
+    - Fixable CRITICAL/HIGH findings can block the pipeline.
+    - Fixable MEDIUM/LOW findings are evaluated against their thresholds.
+    - Currently unfixed findings are reported rather than blocked by
+      severity thresholds.
+    - Ignored vulnerability IDs are excluded entirely.
 
-        reason:
-            Human-readable explanation
+    Returns:
+        dict containing:
+            decision:
+                PASS, REPORT, or BLOCK
 
-        counts:
-            Number of applicable findings by severity
+            reason:
+                Human-readable explanation
+
+            counts:
+                Total applicable findings by severity
+
+            fixable_counts:
+                Currently fixable findings by severity
+
+            unfixable_counts:
+                Currently unfixed findings by severity
     """
 
     ignored_vulnerabilities = set(
@@ -126,12 +140,32 @@ def evaluate_vulnerabilities(findings, policy):
         "LOW": 0,
     }
 
-    # Count findings BEFORE evaluating any thresholds.
+    fixable_counts = {
+        "CRITICAL": 0,
+        "HIGH": 0,
+        "MEDIUM": 0,
+        "LOW": 0,
+    }
+
+    unfixable_counts = {
+        "CRITICAL": 0,
+        "HIGH": 0,
+        "MEDIUM": 0,
+        "LOW": 0,
+    }
+
     for finding in applicable_findings:
         severity = finding.get("severity")
 
-        if severity in counts:
-            counts[severity] += 1
+        if severity not in counts:
+            continue
+
+        counts[severity] += 1
+
+        if finding.get("fix_available") is True:
+            fixable_counts[severity] += 1
+        else:
+            unfixable_counts[severity] += 1
 
     # ---------------------------------------------------------
     # Fixable CRITICAL vulnerabilities
@@ -149,6 +183,8 @@ def evaluate_vulnerabilities(findings, policy):
             "decision": "BLOCK",
             "reason": "Fixable CRITICAL vulnerability found",
             "counts": counts,
+            "fixable_counts": fixable_counts,
+            "unfixable_counts": unfixable_counts,
         }
 
     # ---------------------------------------------------------
@@ -167,71 +203,76 @@ def evaluate_vulnerabilities(findings, policy):
             "decision": "BLOCK",
             "reason": "Fixable HIGH vulnerability found",
             "counts": counts,
+            "fixable_counts": fixable_counts,
+            "unfixable_counts": unfixable_counts,
         }
 
     # ---------------------------------------------------------
-    # Medium threshold
+    # Fixable MEDIUM threshold
     # ---------------------------------------------------------
 
     max_medium = policy.get("max_medium", 0)
 
-    if counts["MEDIUM"] > max_medium:
+    if fixable_counts["MEDIUM"] > max_medium:
         return {
             "decision": "BLOCK",
             "reason": (
-                f"MEDIUM vulnerability count "
-                f"({counts['MEDIUM']}) exceeds allowed maximum "
+                f"Fixable MEDIUM vulnerability count "
+                f"({fixable_counts['MEDIUM']}) exceeds allowed maximum "
                 f"({max_medium})"
             ),
             "counts": counts,
+            "fixable_counts": fixable_counts,
+            "unfixable_counts": unfixable_counts,
         }
 
     # ---------------------------------------------------------
-    # Low threshold
+    # Fixable LOW threshold
     # ---------------------------------------------------------
 
     max_low = policy.get("max_low", 0)
 
-    if counts["LOW"] > max_low:
+    if fixable_counts["LOW"] > max_low:
         return {
             "decision": "BLOCK",
             "reason": (
-                f"LOW vulnerability count "
-                f"({counts['LOW']}) exceeds allowed maximum "
+                f"Fixable LOW vulnerability count "
+                f"({fixable_counts['LOW']}) exceeds allowed maximum "
                 f"({max_low})"
             ),
             "counts": counts,
+            "fixable_counts": fixable_counts,
+            "unfixable_counts": unfixable_counts,
         }
 
     # ---------------------------------------------------------
-    # Unfixable CRITICAL/HIGH vulnerabilities
+    # Currently unfixed vulnerabilities
     # ---------------------------------------------------------
 
-    unfixable_critical = [
-        finding
-        for finding in applicable_findings
-        if finding.get("severity") == "CRITICAL"
-        and not finding.get("fix_available")
-    ]
+    has_unfixable = any(
+        count > 0
+        for count in unfixable_counts.values()
+    )
 
-    unfixable_high = [
-        finding
-        for finding in applicable_findings
-        if finding.get("severity") == "HIGH"
-        and not finding.get("fix_available")
-    ]
-
-    if unfixable_critical or unfixable_high:
+    if has_unfixable:
         return {
             "decision": "REPORT",
-            "reason": "Unfixable CRITICAL/HIGH vulnerabilities found",
+            "reason": "Currently unfixed vulnerabilities found",
             "counts": counts,
+            "fixable_counts": fixable_counts,
+            "unfixable_counts": unfixable_counts,
         }
+
+    # ---------------------------------------------------------
+    # No policy violations
+    # ---------------------------------------------------------
 
     return {
         "decision": "PASS",
         "reason": "All vulnerability policy checks passed",
         "counts": counts,
+        "fixable_counts": fixable_counts,
+        "unfixable_counts": unfixable_counts,
     }
 
 
@@ -274,6 +315,8 @@ def main():
     print(f"Decision: {result['decision']}")
     print(f"Reason: {result['reason']}")
     print(f"Counts: {result['counts']}")
+    print(f"Fixable: {result['fixable_counts']}")
+    print(f"Currently unfixed: {result['unfixable_counts']}")
 
     if result["decision"] == "BLOCK":
         return 1

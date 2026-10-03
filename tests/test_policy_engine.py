@@ -276,7 +276,7 @@ def test_policy_reports_unfixable_high():
     assert result["decision"] == "REPORT"
 
 
-def test_policy_allows_medium_findings_within_threshold():
+def test_policy_allows_unfixable_medium_findings_within_threshold():
     findings = [
         make_finding("MEDIUM", False),
         make_finding("MEDIUM", False),
@@ -285,12 +285,12 @@ def test_policy_allows_medium_findings_within_threshold():
 
     result = evaluate_vulnerabilities(findings, default_policy())
 
-    assert result["decision"] == "PASS"
+    assert result["decision"] == "REPORT"
 
 
-def test_policy_blocks_medium_findings_above_threshold():
+def test_policy_blocks_fixable_medium_findings_above_threshold():
     findings = [
-        make_finding("MEDIUM", False)
+        make_finding("MEDIUM", True)
         for _ in range(11)
     ]
 
@@ -299,9 +299,9 @@ def test_policy_blocks_medium_findings_above_threshold():
     assert result["decision"] == "BLOCK"
 
 
-def test_policy_allows_low_findings_within_threshold():
+def test_policy_allows_fixable_medium_findings_within_threshold():
     findings = [
-        make_finding("LOW", False)
+        make_finding("MEDIUM", True)
         for _ in range(10)
     ]
 
@@ -310,15 +310,49 @@ def test_policy_allows_low_findings_within_threshold():
     assert result["decision"] == "PASS"
 
 
-def test_policy_blocks_low_findings_above_threshold():
+def test_policy_reports_unfixable_medium_findings_above_threshold():
+    findings = [
+        make_finding("MEDIUM", False)
+        for _ in range(11)
+    ]
+
+    result = evaluate_vulnerabilities(findings, default_policy())
+
+    assert result["decision"] == "REPORT"
+
+
+def test_policy_allows_unfixable_low_findings_within_threshold():
     findings = [
         make_finding("LOW", False)
+        for _ in range(10)
+    ]
+
+    result = evaluate_vulnerabilities(findings, default_policy())
+
+    assert result["decision"] == "REPORT"
+
+
+def test_policy_blocks_fixable_low_findings_above_threshold():
+    findings = [
+        make_finding("LOW", True)
         for _ in range(51)
     ]
 
     result = evaluate_vulnerabilities(findings, default_policy())
 
     assert result["decision"] == "BLOCK"
+
+
+def test_policy_allows_fixable_low_findings_within_threshold():
+    findings = [
+        make_finding("LOW", True)
+        for _ in range(50)
+    ]
+
+    result = evaluate_vulnerabilities(findings, default_policy())
+
+    assert result["decision"] == "PASS"
+
 
 def test_load_policy(tmp_path):
     policy_file = tmp_path / "container.json"
@@ -362,6 +396,7 @@ def test_load_policy_rejects_missing_file(tmp_path):
     else:
         raise AssertionError("Expected FileNotFoundError")
 
+
 def test_policy_ignores_configured_vulnerability():
     findings = [
         {
@@ -403,6 +438,7 @@ def test_policy_does_not_ignore_unlisted_vulnerability():
     assert result["decision"] == "BLOCK"
     assert result["counts"]["HIGH"] == 1
 
+
 def test_policy_blocks_fixable_critical_from_fixture():
     fixture_path = Path("tests/fixtures/policy_findings.json")
 
@@ -415,6 +451,7 @@ def test_policy_blocks_fixable_critical_from_fixture():
 
     assert result["decision"] == "BLOCK"
     assert result["reason"] == "Fixable CRITICAL vulnerability found"
+
 
 def test_policy_reports_unfixable_high_from_fixture():
     fixture_path = Path("tests/fixtures/policy_findings.json")
@@ -433,7 +470,8 @@ def test_policy_reports_unfixable_high_from_fixture():
     result = evaluate_vulnerabilities(findings, policy)
 
     assert result["decision"] == "REPORT"
-    assert result["reason"] == "Unfixable CRITICAL/HIGH vulnerabilities found"
+    assert result["reason"] == "Currently unfixed vulnerabilities found"
+
 
 def test_policy_passes_medium_finding_within_fixture_threshold():
     fixture_path = Path("tests/fixtures/policy_findings.json")
@@ -453,3 +491,44 @@ def test_policy_passes_medium_finding_within_fixture_threshold():
 
     assert result["decision"] == "PASS"
     assert result["reason"] == "All vulnerability policy checks passed"
+
+
+def test_policy_reports_unfixable_medium_and_low_findings():
+    findings = [
+        make_finding("MEDIUM", False),
+        make_finding("LOW", False),
+    ]
+
+    result = evaluate_vulnerabilities(findings, default_policy())
+
+    assert result["decision"] == "REPORT"
+
+
+def test_policy_blocks_when_fixable_medium_exceeds_threshold_with_unfixable_findings():
+    findings = [
+        make_finding("MEDIUM", True)
+        for _ in range(11)
+    ]
+
+    findings.extend(
+        [
+            make_finding("MEDIUM", False),
+            make_finding("LOW", False),
+        ]
+    )
+
+    result = evaluate_vulnerabilities(findings, default_policy())
+
+    assert result["decision"] == "BLOCK"
+
+
+def test_policy_reports_unfixable_findings_without_blocking():
+    findings = [
+        make_finding("HIGH", False),
+        make_finding("MEDIUM", False),
+        make_finding("LOW", False),
+    ]
+
+    result = evaluate_vulnerabilities(findings, default_policy())
+
+    assert result["decision"] == "REPORT"
