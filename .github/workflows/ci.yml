@@ -283,27 +283,108 @@ jobs:
           echo "Deploying image:"
           echo "${ECR_IMAGE}"
 
+          DEPLOY_SCRIPT=$(cat <<EOF
+          set -euo pipefail
+
+          ECR_IMAGE="${ECR_IMAGE}"
+          STATE_FILE="/opt/securepipe/previous-image"
+
+          mkdir -p "\$(dirname "\${STATE_FILE}")"
+
+          echo "=== SecurePipe deployment started ==="
+          echo "New image: \${ECR_IMAGE}"
+
+          echo "Authenticating Docker to ECR..."
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login \
+              --username AWS \
+              --password-stdin \
+              "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+          echo "Pulling new image..."
+          docker pull "\${ECR_IMAGE}"
+
+          CURRENT_IMAGE=\$(docker inspect --format '{{.Config.Image}}' securepipe 2>/dev/null || true)
+
+          if [ -z "\${CURRENT_IMAGE}" ]; then
+            echo "ERROR: No currently running SecurePipe container found."
+            exit 1
+          fi
+
+          echo "Current image: \${CURRENT_IMAGE}"
+
+          echo "Saving current image as rollback target..."
+          printf '%s\\n' "\${CURRENT_IMAGE}" > "\${STATE_FILE}"
+
+          rollback() {
+            echo "=== Starting automatic rollback ==="
+
+            ROLLBACK_IMAGE=\$(cat "\${STATE_FILE}")
+
+            if [ -z "\${ROLLBACK_IMAGE}" ]; then
+              echo "ERROR: Rollback image is empty."
+              exit 1
+            fi
+
+            echo "Rollback image: \${ROLLBACK_IMAGE}"
+
+            docker rm -f securepipe 2>/dev/null || true
+
+            echo "Starting rollback image..."
+            docker run -d \
+              --name securepipe \
+              --restart unless-stopped \
+              -p 8000:8000 \
+              "\${ROLLBACK_IMAGE}"
+
+            sleep 5
+
+            echo "Checking rollback health..."
+            curl -fsS http://127.0.0.1:8000/health
+
+            echo
+            echo "=== Rollback successful ==="
+          }
+
+          echo "Stopping current container..."
+          docker rm -f securepipe 2>/dev/null || true
+
+          echo "Starting new image..."
+          if ! docker run -d \
+            --name securepipe \
+            --restart unless-stopped \
+            -p 8000:8000 \
+            "\${ECR_IMAGE}"; then
+
+            echo "ERROR: New container failed to start."
+            rollback
+            exit 1
+          fi
+
+          sleep 5
+
+          echo "Checking new deployment health..."
+          if ! curl -fsS http://127.0.0.1:8000/health; then
+            echo
+            echo "ERROR: New deployment failed health check."
+
+            docker logs securepipe || true
+
+            rollback
+            exit 1
+          fi
+
+          echo
+          echo "=== SecurePipe deployment successful ==="
+          echo "Running image: \${ECR_IMAGE}"
+          echo "Rollback image: \${CURRENT_IMAGE}"
+          EOF
+          )
+
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${EC2_INSTANCE_ID}" \
             --document-name "AWS-RunShellScript" \
-            --parameters "$(jq -n \
-              --arg image "${ECR_IMAGE}" \
-              '{
-                commands: [
-                  "set -e",
-                  "echo \"=== SecurePipe deployment started ===\"",
-                  ("echo \"Image: " + $image + "\""),
-                  "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 854469103418.dkr.ecr.us-east-1.amazonaws.com",
-                  ("docker pull " + $image),
-                  "docker rm -f securepipe 2>/dev/null || true",
-                  ("docker run -d --name securepipe --restart unless-stopped -p 8000:8000 " + $image),
-                  "sleep 5",
-                  "docker ps --filter name=securepipe",
-                  "curl -fsS http://127.0.0.1:8000/health",
-                  "echo",
-                  "echo \"=== SecurePipe deployment successful ===\""
-                ]
-              }')" \
+            --parameters "$(jq -n --arg script "${DEPLOY_SCRIPT}" '{commands: [$script]}')" \
             --query 'Command.CommandId' \
             --output text)
 
