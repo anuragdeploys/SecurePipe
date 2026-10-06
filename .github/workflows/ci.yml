@@ -342,7 +342,7 @@ jobs:
             ROLLBACK_HEALTHY=false
 
             for attempt in $(seq 1 15); do
-              echo "Rollback health check attempt ${attempt}/15..."
+              echo "Rollback health check attempt \${attempt}/15..."
 
               if curl -fsS http://127.0.0.1:8000/health; then
                 ROLLBACK_HEALTHY=true
@@ -355,7 +355,7 @@ jobs:
               sleep 2
             done
 
-            if [ "${ROLLBACK_HEALTHY}" != "true" ]; then
+            if [ "\${ROLLBACK_HEALTHY}" != "true" ]; then
               echo
               echo "ERROR: Rollback image failed health check."
               docker logs securepipe || true
@@ -386,7 +386,7 @@ jobs:
           HEALTHY=false
 
           for attempt in $(seq 1 15); do
-            echo "Health check attempt ${attempt}/15..."
+            echo "Health check attempt \${attempt}/15..."
 
             if curl -fsS http://127.0.0.1:8000/health; then
               HEALTHY=true
@@ -399,7 +399,7 @@ jobs:
             sleep 2
           done
 
-          if [ "${HEALTHY}" != "true" ]; then
+          if [ "\${HEALTHY}" != "true" ]; then
             echo
             echo "ERROR: New deployment failed health check."
 
