@@ -1200,11 +1200,11 @@ This project is licensed under the MIT License.
 # Author
 
 **Anurag Varma**
+
 GitHub:
 
 https://github.com/anuragdeploys
 
-Repository
 GitHub Repository:
 
 https://github.com/anuragdeploys/SecurePipe
