@@ -19,8 +19,57 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Debug GitHub OIDC claims
-        uses: github/actions-oidc-debugger@v1.0.0
+      - name: Inspect GitHub OIDC claims
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Requesting GitHub OIDC token..."
+
+          OIDC_RESPONSE=$(curl -sS \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            -H "Accept: application/json; api-version=2.0" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")
+
+          OIDC_TOKEN=$(echo "$OIDC_RESPONSE" | jq -r '.value')
+
+          if [ -z "$OIDC_TOKEN" ] || [ "$OIDC_TOKEN" = "null" ]; then
+            echo "ERROR: GitHub did not return an OIDC token."
+            exit 1
+          fi
+
+          echo "OIDC token received."
+
+          PAYLOAD=$(echo "$OIDC_TOKEN" | cut -d '.' -f2)
+
+          PAYLOAD=$(python3 -c '
+          import base64
+          import json
+          import sys
+
+          payload = sys.argv[1]
+          payload += "=" * (-len(payload) % 4)
+
+          decoded = base64.urlsafe_b64decode(payload)
+          claims = json.loads(decoded)
+
+          important = {
+              "iss": claims.get("iss"),
+              "aud": claims.get("aud"),
+              "sub": claims.get("sub"),
+              "repository": claims.get("repository"),
+              "repository_id": claims.get("repository_id"),
+              "repository_owner": claims.get("repository_owner"),
+              "repository_owner_id": claims.get("repository_owner_id"),
+              "ref": claims.get("ref"),
+              "event_name": claims.get("event_name")
+          }
+
+          print(json.dumps(important, indent=2))
+          ' "$PAYLOAD")
+
+          echo "GitHub OIDC claims:"
+          echo "$PAYLOAD"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.3.0
