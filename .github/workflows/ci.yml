@@ -284,7 +284,7 @@ jobs:
           echo "${ECR_IMAGE}"
 
           DEPLOY_SCRIPT=$(cat <<EOF
-          set -euo pipefail
+          set -eu
 
           ECR_IMAGE="${ECR_IMAGE}"
           STATE_FILE="/opt/securepipe/previous-image"
