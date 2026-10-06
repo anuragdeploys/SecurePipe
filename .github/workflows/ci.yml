@@ -276,7 +276,7 @@ jobs:
         id: deploy
         shell: bash
         run: |
-          set -euo pipefail
+          set -eu
 
           ECR_IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA}"
 
