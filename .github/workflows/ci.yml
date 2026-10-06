@@ -337,10 +337,30 @@ jobs:
               -p 8000:8000 \
               "\${ROLLBACK_IMAGE}"
 
-            sleep 5
-
             echo "Checking rollback health..."
-            curl -fsS http://127.0.0.1:8000/health
+
+            ROLLBACK_HEALTHY=false
+
+            for attempt in $(seq 1 15); do
+              echo "Rollback health check attempt ${attempt}/15..."
+
+              if curl -fsS http://127.0.0.1:8000/health; then
+                ROLLBACK_HEALTHY=true
+                echo
+                echo "Rollback image is healthy."
+                break
+              fi
+
+              echo "Rollback application not ready yet. Waiting 2 seconds..."
+              sleep 2
+            done
+
+            if [ "${ROLLBACK_HEALTHY}" != "true" ]; then
+              echo
+              echo "ERROR: Rollback image failed health check."
+              docker logs securepipe || true
+              exit 1
+            fi
 
             echo
             echo "=== Rollback successful ==="
@@ -361,10 +381,25 @@ jobs:
             exit 1
           fi
 
-          sleep 5
-
           echo "Checking new deployment health..."
-          if ! curl -fsS http://127.0.0.1:8000/health; then
+
+          HEALTHY=false
+
+          for attempt in $(seq 1 15); do
+            echo "Health check attempt ${attempt}/15..."
+
+            if curl -fsS http://127.0.0.1:8000/health; then
+              HEALTHY=true
+              echo
+              echo "New deployment is healthy."
+              break
+            fi
+
+            echo "Application not ready yet. Waiting 2 seconds..."
+            sleep 2
+          done
+
+          if [ "${HEALTHY}" != "true" ]; then
             echo
             echo "ERROR: New deployment failed health check."
 
