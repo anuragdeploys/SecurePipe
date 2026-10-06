@@ -79,13 +79,14 @@ jobs:
           role-session-name: SecurePipeGitHubActions
 
       - name: Verify AWS identity
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
           echo "AWS identity:"
           aws sts get-caller-identity
 
           echo "AWS region:"
-          aws configure get region
+          echo "${AWS_REGION}"
 
           echo "OIDC authentication succeeded."
