@@ -89,7 +89,9 @@ jobs:
 
       - name: Run SecurePipe policy engine
         run: |
-          python policy_engine.py --sarif security-results/trivy-fs-results.sarif --policy policies/container.json
+          python policy_engine.py \
+            --sarif security-results/trivy-fs-results.sarif \
+            --policy policies/container.json
 
   docker-build:
     name: Docker Build
@@ -184,4 +186,59 @@ jobs:
 
       - name: Run SecurePipe container policy
         run: |
-          python policy_engine.py --sarif security-results/trivy-container-results.sarif --policy policies/container.json
+          python policy_engine.py \
+            --sarif security-results/trivy-container-results.sarif \
+            --policy policies/container.json
+
+  publish-image:
+    name: Publish Image to Amazon ECR
+    runs-on: ubuntu-latest
+
+    needs:
+      - container-policy-gate
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: us-east-1
+      AWS_ACCOUNT_ID: "854469103418"
+      ECR_REPOSITORY: securepipe
+
+    steps:
+      - name: Download Docker image
+        uses: actions/download-artifact@v4
+        with:
+          name: securepipe-docker-image
+          path: image
+
+      - name: Load Docker image
+        run: |
+          gunzip -c image/securepipe-image.tar.gz | docker load
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::854469103418:role/SecurePipeGitHubActionsRole
+          aws-region: us-east-1
+          role-session-name: SecurePipeECRPublish
+
+      - name: Authenticate Docker to Amazon ECR
+        run: |
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login \
+              --username AWS \
+              --password-stdin \
+              "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+      - name: Tag image for Amazon ECR
+        run: |
+          docker tag \
+            "securepipe:${GITHUB_SHA}" \
+            "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA}"
+
+      - name: Push image to Amazon ECR
+        run: |
+          docker push \
+            "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA}"
