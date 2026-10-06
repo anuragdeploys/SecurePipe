@@ -341,7 +341,7 @@ jobs:
 
             ROLLBACK_HEALTHY=false
 
-            for attempt in $(seq 1 15); do
+            for attempt in \$(seq 1 15); do
               echo "Rollback health check attempt \${attempt}/15..."
 
               if curl -fsS http://127.0.0.1:8000/health; then
@@ -385,7 +385,7 @@ jobs:
 
           HEALTHY=false
 
-          for attempt in $(seq 1 15); do
+          for attempt in \$(seq 1 15); do
             echo "Health check attempt \${attempt}/15..."
 
             if curl -fsS http://127.0.0.1:8000/health; then
